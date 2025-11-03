@@ -1,0 +1,61 @@
+-- ---
+-- View 1: Patron Activity Summary
+-- A summary of each patron's loan count, total fines, and outstanding fines.
+-- ---
+CREATE VIEW v_patron_activity AS
+SELECT
+  p.patron_id,
+  p.patron_name,
+  p.email,
+  COUNT(DISTINCT l.loan_id) AS total_loans,
+  COALESCE(SUM(f.amount), 0) AS total_fines,
+  COALESCE(SUM(CASE WHEN f.status = 'unpaid' THEN f.amount ELSE 0 END), 0) AS outstanding_fines
+FROM patrons p
+LEFT JOIN loans l ON p.patron_id = l.patron_id
+LEFT JOIN fines f ON l.loan_id = f.loan_id
+GROUP BY p.patron_id, p.patron_name, p.email;
+
+-- To test this view, you can run:
+-- SELECT * FROM v_patron_activity;
+
+---
+-- View 2: Branch Performance
+-- A summary of each branch's copy count, total loans, and currently overdue loans.
+-- (Using '2025-10-31' as today's date)
+---
+CREATE VIEW v_branch_performance AS
+SELECT
+  br.branch_id,
+  br.branch_name,
+  COUNT(DISTINCT c.copy_id) AS total_copies,
+  COUNT(DISTINCT l.loan_id) AS total_loans,
+  COUNT(DISTINCT CASE
+    WHEN l.return_date IS NULL AND l.due_date < '2025-10-31' THEN l.loan_id
+    ELSE NULL
+  END) AS overdue_count
+FROM branches br
+LEFT JOIN copies c ON br.branch_id = c.branch_id
+LEFT JOIN loans l ON c.copy_id = l.copy_id
+GROUP BY br.branch_id, br.branch_name;
+
+-- To test this view, you can run:
+-- SELECT * FROM v_branch_performance;
+
+---
+-- View 3: Catalog Status
+-- A summary of each book's total copies, available copies, and lifetime loan count.
+-- ---
+CREATE VIEW v_catalog_status AS
+SELECT
+  b.book_id,
+  b.title,
+  COUNT(c.copy_id) AS total_copies,
+  SUM(CASE WHEN c.status = 'available' THEN 1 ELSE 0 END) AS available_copies,
+  COUNT(l.loan_id) AS total_loans
+FROM books b
+LEFT JOIN copies c ON b.book_id = c.book_id
+LEFT JOIN loans l ON c.copy_id = l.copy_id
+GROUP BY b.book_id, b.title;
+
+-- To test this view, you can run:
+-- SELECT * FROM v_catalog_status;

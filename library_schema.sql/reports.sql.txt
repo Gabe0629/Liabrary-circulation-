@@ -1,0 +1,175 @@
+-- ---
+-- First Reports (1-8)
+-- ---
+
+-- Query 1: Top 5 Most Loaned Authors
+SELECT
+  a.author_name,
+  COUNT(l.loan_id) AS total_loans
+FROM authors a
+JOIN book_authors ba ON a.author_id = ba.author_id
+JOIN books b ON ba.book_id = b.book_id
+JOIN copies c ON b.book_id = c.book_id
+JOIN loans l ON c.copy_id = l.copy_id
+GROUP BY a.author_id, a.author_name
+ORDER BY total_loans DESC
+LIMIT 5;
+
+-- Query 2: Branch Leaderboard (by Total Loans)
+SELECT
+  br.branch_name,
+  COUNT(l.loan_id) AS total_loans
+FROM branches br
+JOIN copies c ON br.branch_id = c.branch_id
+JOIN loans l ON c.copy_id = l.copy_id
+GROUP BY br.branch_id, br.branch_name
+ORDER BY total_loans DESC;
+
+-- Query 3: Overdue Loans Percentage
+-- (Using '2025-10-31' as today's date)
+SELECT
+  SUM(CASE WHEN l.return_date IS NULL AND l.due_date < '2025-10-31' THEN 1 ELSE 0 END) AS overdue_loans,
+  COUNT(l.loan_id) AS total_loans,
+  (SUM(CASE WHEN l.return_date IS NULL AND l.due_date < '2025-10-31' THEN 1 ELSE 0 END) * 100.0 / COUNT(l.loan_id)) AS overdue_percentage
+FROM loans l;
+
+-- Query 4: Most Popular Books (Top 10)
+SELECT
+  b.title,
+  COUNT(l.loan_id) AS loan_count
+FROM books b
+JOIN copies c ON b.book_id = c.book_id
+JOIN loans l ON c.copy_id = l.copy_id
+GROUP BY b.book_id, b.title
+ORDER BY loan_count DESC
+LIMIT 10;
+
+-- Query 5: All Currently Overdue Items
+-- (Using '2025-10-31' as today's date)
+SELECT
+  p.patron_name,
+  p.email,
+  b.title,
+  l.loan_date,
+  l.due_date,
+  julianday('2025-10-31') - julianday(l.due_date) AS days_overdue
+FROM loans l
+JOIN patrons p ON l.patron_id = p.patron_id
+JOIN copies c ON l.copy_id = c.copy_id
+JOIN books b ON c.book_id = b.book_id
+WHERE l.return_date IS NULL AND l.due_date < '2025-10-31'
+ORDER BY days_overdue DESC;
+
+-- Query 6: Inventory Status Report
+SELECT
+  c.status,
+  COUNT(c.copy_id) AS total_copies
+FROM copies c
+GROUP BY c.status;
+
+-- Query 7: Recently Joined Patrons
+-- (Joined in the last year from '2025-10-31')
+SELECT
+  patron_name,
+  email,
+  join_date
+FROM patrons
+WHERE join_date >= date('2025-10-31', '-1 year');
+
+-- Query 8: Outstanding Fines Summary
+SELECT
+  SUM(f.amount) AS total_fines_issued,
+  SUM(CASE WHEN f.status = 'paid' THEN f.amount ELSE 0 END) AS total_paid,
+  SUM(CASE WHEN f.status = 'unpaid' THEN f.amount ELSE 0 END) AS total_outstanding
+FROM fines f;
+
+-- ---
+-- Final Reports (9-15)
+-- ---
+
+-- Query 9: Full Loan History for a Specific Patron
+SELECT
+  p.patron_name,
+  b.title,
+  l.loan_date,
+  l.due_date,
+  l.return_date,
+  CASE
+    WHEN l.return_date IS NULL AND l.due_date < '2025-10-31' THEN 'OVERDUE'
+    WHEN l.return_date IS NULL THEN 'On Loan'
+    ELSE 'Returned'
+  END AS loan_status
+FROM loans l
+JOIN patrons p ON l.patron_id = p.patron_id
+JOIN copies c ON l.copy_id = c.copy_id
+JOIN books b ON c.book_id = b.book_id
+WHERE p.patron_id = 1 -- (For Alice Smith)
+ORDER BY l.loan_date DESC;
+
+-- Query 10: Patron Fine Summary
+SELECT
+  p.patron_name,
+  COUNT(f.fine_id) AS total_fines,
+  SUM(CASE WHEN f.status = 'paid' THEN f.amount ELSE 0 END) AS total_paid,
+  SUM(CASE WHEN f.status = 'unpaid' THEN f.amount ELSE 0 END) AS total_outstanding,
+  SUM(CASE WHEN f.status = 'waived' THEN f.amount ELSE 0 END) AS total_waived
+FROM patrons p
+LEFT JOIN loans l ON p.patron_id = l.patron_id
+LEFT JOIN fines f ON l.loan_id = f.loan_id
+GROUP BY p.patron_id, p.patron_name
+HAVING total_fines > 0
+ORDER BY total_outstanding DESC;
+
+-- Query 11: Detailed Branch Inventory
+SELECT
+  br.branch_name,
+  b.title,
+  COUNT(c.copy_id) AS number_of_copies
+FROM branches br
+JOIN copies c ON br.branch_id = c.branch_id
+JOIN books b ON c.book_id = b.book_id
+GROUP BY br.branch_name, b.title
+ORDER BY br.branch_name, b.title;
+
+-- Query 12: Damaged or Lost Book Report
+SELECT
+  c.copy_id,
+  b.title,
+  br.branch_name AS last_known_branch,
+  c.status
+FROM copies c
+JOIN books b ON c.book_id = b.book_id
+JOIN branches br ON c.branch_id = br.branch_id
+WHERE c.status IN ('damaged', 'lost');
+
+-- Query 13: Average Loan Duration
+SELECT
+  AVG(julianday(l.return_date) - julianday(l.loan_date)) AS avg_loan_days
+FROM loans l
+WHERE l.return_date IS NOT NULL;
+
+-- Query 14: Most Active Patrons (Top 5)
+SELECT
+  p.patron_name,
+  p.email,
+  p.join_date,
+  COUNT(l.loan_id) AS total_loans
+FROM patrons p
+JOIN loans l ON p.patron_id = l.patron_id
+GROUP BY p.patron_id, p.patron_name, p.email, p.join_date
+ORDER BY total_loans DESC
+LIMIT 5;
+
+-- Query 15: Books That Have Never Been Loaned
+SELECT
+  b.title,
+  a.author_name,
+  b.published_year
+FROM books b
+JOIN book_authors ba ON b.book_id = ba.book_id
+JOIN authors a ON ba.author_id = a.author_id
+WHERE b.book_id NOT IN (
+  SELECT c.book_id
+  FROM copies c
+  JOIN loans l ON c.copy_id = l.copy_id
+);
